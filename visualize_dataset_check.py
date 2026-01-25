@@ -7,8 +7,9 @@ from Event import Event
 from Constant import Constant
 import matplotlib.pyplot as plt
 
-# --- 設定 (make_dataset.py と合わせる) ---
-KAGGLE_PBP_CSV = 'NBA_PBP_2015-16.csv'
+# --- 設定 (make_dataset_classification.py と合わせる) ---
+# ★ 修正: 生データではなく、クリーニング済みデータを参照する
+TARGET_CSV = 'cleaned_shots_data_v2.csv' 
 TRACKING_DIR = './data/2016.NBA.Raw.SportVU.Game.Logs'
 OUTPUT_DIR = './output_check_viz' # 確認用GIFの保存先
 
@@ -91,22 +92,22 @@ def get_shot_window_moments(moments, time_index, target_q, target_sec):
 # ==========================================
 def visualize_dataset_window(game_id, event_id_target):
     # 1. CSVから該当プレーの情報を取得
-    print(f"Loading CSV: {KAGGLE_PBP_CSV} ...")
-    try:
-        df = pd.read_csv(KAGGLE_PBP_CSV, encoding='ISO-8859-1')
-    except FileNotFoundError:
-        print(f"Error: CSV not found.")
+    print(f"Loading CSV: {TARGET_CSV} ...")
+    if not os.path.exists(TARGET_CSV):
+        print(f"Error: {TARGET_CSV} not found.")
         return
 
-    # URLからGAME_IDを生成するロジック
-    unique_urls = df['URL'].unique()
-    url_to_id = {url: f"002150{str(i + 1).zfill(4)}" for i, url in enumerate(unique_urls)}
-    df['GAME_ID'] = df['URL'].map(url_to_id)
+    # ★ 修正: GAME_IDを文字列として読み込む (0落ち防止)
+    df = pd.read_csv(TARGET_CSV, dtype={'GAME_ID': str})
     
-    # ★★★ 修正箇所: EVENTNUM がない場合に生成する処理を追加 ★★★
+    # URL列がない場合（cleaned_shots_data.csv）はID生成をスキップ
+    if 'URL' in df.columns and 'GAME_ID' not in df.columns:
+        unique_urls = df['URL'].unique()
+        url_to_id = {url: f"002150{str(i + 1).zfill(4)}" for i, url in enumerate(unique_urls)}
+        df['GAME_ID'] = df['URL'].map(url_to_id)
+    
     if 'EVENTNUM' not in df.columns:
         df['EVENTNUM'] = range(len(df))
-    # -----------------------------------------------------------
     
     # 該当プレーを検索
     target_play = df[(df['GAME_ID'] == game_id) & (df['EVENTNUM'] == event_id_target)]
@@ -143,17 +144,15 @@ def visualize_dataset_window(game_id, event_id_target):
     all_moments = []
     target_event_metadata = None
 
+    # メタデータ取得用（cleanedデータの場合、元のeventidは失われている可能性があるので、
+    # 最初のイベント情報をダミーとして使うか、あれば使う）
+    
+    # JSON全部読み込む
     for event in json_data['events']:
-        # JSON内のイベントIDを確認 (メタデータ取得用だが、今回は必須ではない)
-        eid = event.get('eventid') or event.get('eventId')
-        if eid is not None and int(eid) == int(event_id_target):
-             target_event_metadata = event
-        
         all_moments.extend(event.get('moments', []))
 
-    if target_event_metadata is None:
-         # メタデータが見つからなくても、とりあえず最初のイベント情報を使って描画を試みる
-         target_event_metadata = json_data['events'][0]
+    # メタデータは可視化（チーム名など）に必要なので、とりあえず最初のイベントを使う
+    target_event_metadata = json_data['events'][0]
 
     time_index = build_tracking_index(all_moments)
 
