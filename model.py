@@ -8,55 +8,73 @@ class STGAT(torch.nn.Module):
     def __init__(self, node_features, edge_features, hidden_channels, out_channels=1):
         super(STGAT, self).__init__()
         
-        # --- 1. 空間的特徴抽出 (Spatial) ---
+        # heads=3 なので、Attentionは3つ分の平均などを後で見ることになります
         self.gat1 = GATv2Conv(node_features, hidden_channels, heads=3, edge_dim=edge_features)
+        
+        # GAT2への入力は heads * hidden_channels
         self.gat2 = GATv2Conv(hidden_channels * 3, hidden_channels, heads=1, edge_dim=edge_features)
 
-        # --- 2. 時間的特徴抽出 (Temporal) ---
         self.lstm = LSTM(input_size=hidden_channels, 
                          hidden_size=hidden_channels, 
                          batch_first=True)
 
-        # --- 3. 分類器 (Classifier) ---
         self.dropout = Dropout(p=0.5)
         self.lin1 = Linear(hidden_channels, hidden_channels // 2)
         self.lin2 = Linear(hidden_channels // 2, out_channels)
 
-    def forward(self, data_list):
+    def forward(self, data_list, return_attention=False):
         """
-        data_list: 1プレー分のグラフデータのリスト (長さ: フレーム数)
+        return_attention=True にすると、(予測結果, (edge_index, att_weights)) を返します
+        学習時(train.py)は False のまま動くので影響ありません。
         """
-        
-        # ★★★ 修正箇所 ★★★
-        # 1. まずCPU上でリストを結合してバッチ化する (Batch.from_data_list)
-        # 2. その後、このモデルのパラメータが存在するデバイス(GPU)へ転送する
-        #    next(self.parameters()).device は「このモデルが今いるデバイス」を自動取得します
         device = next(self.parameters()).device
-        batch_data = Batch.from_data_list(data_list).to(device)
+        
+        # バッチ化 (リストが来たらBatchにする、すでにBatchならそのまま)
+        if isinstance(data_list, Batch):
+            batch_data = data_list.to(device)
+        else:
+            # data_listがリストの場合
+            batch_data = Batch.from_data_list(data_list).to(device)
         
         x, edge_index, edge_attr = batch_data.x, batch_data.edge_index, batch_data.edge_attr
         
-        # 1. GCN (Spatial) - 全フレーム一括計算
-        x = self.gat1(x, edge_index, edge_attr=edge_attr)
+        # --- 1. GAT1 (ここでAttentionを取得する分岐を追加) ---
+        if return_attention:
+            # GATv2Conv は return_attention_weights=True で (out, (edge_index, alpha)) を返す仕様
+            x, (att_edge_index, att_weights) = self.gat1(x, edge_index, edge_attr=edge_attr, return_attention_weights=True)
+        else:
+            x = self.gat1(x, edge_index, edge_attr=edge_attr)
+            
         x = F.elu(x)
+        
+        # --- 2. GAT2 ---
         x = self.gat2(x, edge_index, edge_attr=edge_attr)
         x = F.elu(x)
 
-        # 2. Pooling - 各フレームごとの代表ベクトルを取り出す
+        # --- 3. Pooling (グラフ単位の特徴量へ) ---
         frame_features = global_mean_pool(x, batch_data.batch)
         
-        # 3. LSTM (Temporal)
-        # [Time, Features] -> [1, Time, Features] に変形 (Batch size = 1 assumption)
-        seq_tensor = frame_features.unsqueeze(0)
+        # --- 4. LSTM (時系列処理) ---
+        # data_list の長さ = シーケンス長 (フレーム数)
+        # バッチサイズ1の分析前提、あるいは data_list 全体を1シーケンスとして扱う
+        seq_len = len(data_list) if isinstance(data_list, list) else batch_data.num_graphs
+        
+        # [seq_len, hidden] -> [1, seq_len, hidden]
+        # view()を使って安全にreshape
+        seq_tensor = frame_features.view(1, seq_len, -1)
         
         lstm_out, (h_n, c_n) = self.lstm(seq_tensor)
+        
+        # 最後の時刻の隠れ層状態を取得
+        last_hidden = h_n[-1] 
 
-        # 最終時刻の隠れ層
-        last_hidden = h_n[-1]
-
-        # 4. Classifier
+        # --- 5. Classifier ---
         out = self.dropout(last_hidden)
         out = F.relu(self.lin1(out))
         out = self.lin2(out)
         
-        return out
+        # 分析モードならAttentionも返す
+        if return_attention:
+            return out, (att_edge_index, att_weights)
+        else:
+            return out

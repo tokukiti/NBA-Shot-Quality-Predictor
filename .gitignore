@@ -33,3 +33,16 @@ artifacts/
 
 # 2. dataフォルダごと無視する（念のため再確認）
 data/
+
+# --- 追加推奨：生成物（画像やGIF）を無視する設定 ---
+*.png
+*.gif
+output/
+analysis_output_gifs/
+gravity_analysis/
+final_graph_analysis_v4/
+final_analysis_graphs/
+output_check_viz/
+
+# バックアップフォルダ
+old/
