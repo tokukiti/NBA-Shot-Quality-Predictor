@@ -46,3 +46,4 @@ output_check_viz/
 
 # バックアップフォルダ
 old/
+log_50games_train_only.txt
