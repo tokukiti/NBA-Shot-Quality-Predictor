@@ -1,7 +1,7 @@
 import pandas as pd
 
 # CSV読み込み
-df = pd.read_csv('evaluation_results_v11.csv')
+df = pd.read_csv('evaluation_results_50.csv')
 
 # パターン1: 良いプロセス・悪い結果 (AI「入る！」 -> 結果「Miss」)
 good_process = df[(df['actual'] == 0) & (df['prob_make'] > 0.80)]

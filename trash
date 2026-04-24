@@ -1,0 +1,64 @@
+class STGAT(torch.nn.Module):
+    # seq_length=100 を引数に追加し、self.seq_length に保存する
+    def __init__(self, node_features, edge_features, hidden_channels, out_channels=1, seq_length=100):
+        super(STGAT, self).__init__()
+        self.seq_length = seq_length  # これがないと forward でエラーになります
+        
+        # heads=3 により、複数の異なる関係性を同時に学習
+        self.gat1 = GATv2Conv(node_features, hidden_channels, heads=3, edge_dim=edge_features)
+        
+        # GAT2への入力次元は heads * hidden_channels
+        self.gat2 = GATv2Conv(hidden_channels * 3, hidden_channels, heads=1, edge_dim=edge_features)
+
+        self.lstm = LSTM(input_size=hidden_channels, 
+                         hidden_size=hidden_channels, 
+                         batch_first=True)
+
+        self.dropout = Dropout(p=0.5)
+        self.lin1 = Linear(hidden_channels, hidden_channels // 2)
+        self.lin2 = Linear(hidden_channels // 2, out_channels)
+
+    def forward(self, data_list, return_attention=False):
+        device = next(self.parameters()).device
+        
+        # バッチ処理のためにグラフデータを結合
+        if isinstance(data_list, Batch):
+            batch_data = data_list.to(device)
+        else:
+            batch_data = Batch.from_data_list(data_list).to(device)
+        
+        x, edge_index, edge_attr = batch_data.x, batch_data.edge_index, batch_data.edge_attr
+        
+        # 1. Spatial Processing (GAT)
+        if return_attention:
+            x, (att_edge_index, att_weights) = self.gat1(x, edge_index, 
+                                                         edge_attr=edge_attr, 
+                                                         return_attention_weights=True)
+        else:
+            x = self.gat1(x, edge_index, edge_attr=edge_attr)
+            
+        x = F.elu(x)
+        x = self.gat2(x, edge_index, edge_attr=edge_attr)
+        x = F.elu(x)
+
+        # 2. Information Aggregation (Pooling)
+        frame_features = global_mean_pool(x, batch_data.batch)
+        
+        # 3. Temporal Processing (LSTM)
+        # 全フレーム数からバッチサイズを計算してReshape
+        num_total_frames = frame_features.size(0)
+        batch_size = num_total_frames // self.seq_length
+        seq_tensor = frame_features.view(batch_size, self.seq_length, -1)
+        
+        lstm_out, (h_n, c_n) = self.lstm(seq_tensor)
+        last_hidden = h_n[-1] # 最終時刻の隠れ層状態
+
+        # 4. Prediction
+        out = self.dropout(last_hidden)
+        out = F.relu(self.lin1(out))
+        out = self.lin2(out)
+        
+        if return_attention:
+            return out, (att_edge_index, att_weights)
+        else:
+            return out

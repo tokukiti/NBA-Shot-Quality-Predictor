@@ -1,0 +1,203 @@
+\documentclass{jarticle}
+
+% =================================================
+% パッケージ設定
+% =================================================
+\usepackage{eecspresen_m2} 
+\usepackage{amsmath, amssymb, bm}
+\usepackage{float}
+\usepackage[dvipdfmx]{graphicx}
+\usepackage{url}
+\usepackage{booktabs} 
+
+% =================================================
+% 論文情報設定
+% =================================================
+\No{A-00}
+\Jtitle{時空間グラフニューラルネットワークを用いた\\バスケットボールのプレーの質的評価と可視化}
+\Etitle{Qualitative Evaluation and Visualization of Basketball Plays\\ using Spatial-Temporal Graph Neural Networks}
+
+% 学籍番号、氏名、指導教官
+\Author{22141094___得田_渉介_______________指導教官__田川_憲男_教授}
+
+% 年度と日付
+\presenyear{2025}
+\presendate{2026年2月16日}
+
+% 学部生用のフラグ
+\bachelor 
+
+% =================================================
+% 本文開始
+% =================================================
+\begin{document}
+\mktitle
+\renewcommand{\baselinestretch}{0.95}\small
+
+\section{はじめに}
+近年，NBAをはじめとするプロバスケットボールリーグでは，トラッキングデータの普及により高度なデータ分析が可能となっている．
+従来の手法では，フィールドゴール成功率（FG\%）などの「結果」に基づく評価が主流であった．
+しかし，結果のみによる評価では，選手の「良いプロセス（適切な判断やスペーシング）」と「偶然の結果」を区別することが困難である\cite{cervone}．
+
+これまでにも深層学習を用いたショット予測は試みられてきた．
+例えば，Harmonら\cite{harmon}はトラッキングデータを「画像」と見なしCNNを適用したが，選手が疎に点在するコート情報を画像として扱うことは計算効率や関係性抽出の観点で課題がある．
+また，Argyropoulosら\cite{medium_gnn}はグラフニューラルネットワーク（GNN）の適用を試みているが，選手の物理的な「動きの質（急停止やフェイント）」までは十分に考慮されていない．
+
+そこで本研究では，選手とボールの位置関係をグラフ構造とみなすことで相互作用を効率的にモデル化する．
+さらに，位置情報だけでなく加速度などの物理特徴量を導入した時空間グラフニューラルネットワーク（ST-GAT）を提案し，シュートの成否という結果ではなく，そのプロセスを評価する指標「Shot Quality（シュートの質）」の定量化を目的とする．
+加えて，モデル内部のAttention機構を解析することで，スター選手がディフェンスを引きつける力（Gravity）を可視化し，モデルの解釈可能性についても検討する．
+
+\section{提案手法}
+\subsection{データセットと前処理}
+本研究では，NBA 2015-16シーズンのトラッキングデータ（SportVU）およびプレーバイプレーデータ（シュートやリバウンドなどのイベント内容と発生時刻を記録したテキストデータ）を用いる．
+データセットはLin\cite{linouk23}のリポジトリおよびKaggle\cite{kaggle_pbp}より取得し，以下の手順でデータセットを構築した．
+
+\begin{enumerate}
+ \item \textbf{イベント同期とウィンドウ抽出:}
+ プレーバイプレーデータからシュートイベントの発生時刻（Event Time）を特定し，トラッキングデータと同期させた．シュート発生時刻を基準（$t=0$）とし，直前の4.0秒間（$t \in [-4.0, 0]$）を1プレーとして切り出した．データは25fpsで記録されているため，1プレーあたり約100フレームの時系列データとなる．
+ 
+ \item \textbf{座標の正規化:}
+ コートチェンジによる学習への悪影響を防ぐため，全てのプレーが一方のリングへ攻める向きになるように座標変換（正規化）を行った．
+ 
+ \item \textbf{グラフ構築:}
+ 各時刻 $t$ において，コート上の選手10名とボールをノード $V$，それらの相互関係をエッジ $E$ とする完全グラフ $G_t = (V, E)$ を構築した．
+\end{enumerate}
+
+各ノードの特徴量 $\bm{x}_i$ には，正規化された2次元座標 $(x, y)$，速度 $(v_x, v_y)$ に加え，プレーの急激な変化（ストップ動作やカットイン）を捉えるための加速度 $(a_x, a_y)$を含める．
+また，エッジ特徴量 $\bm{e}_{ij}$ としてノード間のユークリッド距離を使用し，選手間の空間的な配置関係を明示的にモデルに組み込む．
+
+\subsection{ST-GATモデル}
+選手間の複雑な連携と時系列的な動きを捉えるため，Veličkovićら\cite{velickovic}のGraph Attention Networks (GAT) を基礎とし，時系列処理層を統合し、本タスクに最適化したSpatial-Temporal Graph Attention Network (ST-GAT) を構築した．
+
+\textbf{(1) モデルアーキテクチャ} \\
+提案モデルの概略図を図\ref{fig:model_arch}に示す．処理フローは以下の通りである．
+\begin{enumerate}
+ \item \textbf{Spatial GAT:}
+ 各フレームにおいて，Graph Attention Layerによりノード特徴量を更新する．この際，エッジ特徴量（距離）をAttention機構の入力として用いることで，空間的な近接性を考慮した重み付けを学習する．
+ 
+ \item \textbf{Global Mean Pooling:}
+ GATによって更新された全ノードの特徴量を平均プーリングにより集約し，その時刻 $t$ における「コート全体の状況」を表す単一のグラフ特徴ベクトル $\bm{h}_t$ を生成する．
+ 
+ \item \textbf{Temporal LSTM:}
+ 時系列順に並べた特徴ベクトル列をLSTMに入力し，時間的な文脈情報を集約する．
+ 
+ \item \textbf{Prediction:}
+ 最終時刻のLSTM隠れ層状態から，全結合層を経てシュート成功確率 $\hat{y} \in [0, 1]$ を出力する．
+\end{enumerate}
+
+\begin{figure}[tb]
+ \centering
+ \makebox[\linewidth][c]{\includegraphics[width=1.15\linewidth]{stgat_model_architecture.png}}
+ \caption{提案モデル (ST-GAT) の概略図}
+ \label{fig:model_arch}
+\end{figure}
+
+\textbf{(2) 学習} \\
+学習においては，実際のシュート結果 $y \in \{0, 1\}$ と予測値 $\hat{y}$ とのバイナリクロスエントロピー誤差を損失関数とし，これを最小化するようにパラメータの更新を行う．
+
+\section{数値実験}
+\subsection{実験設定と評価指標}
+データセットとして，クリーニング済みの50試合分のシュートデータ（計7,601本）を使用した．
+評価指標としてAccuracy（正解率），F1-Score，および確率予測の信頼性を測るROC-AUCを用いた．
+
+\subsection{特徴量の有効性検証}
+提案手法における「加速度特徴量」の有効性を検証するため，位置と速度のみを用いたベースラインモデルと，加速度を加えた提案モデルの比較を行った（表\ref{tab:comparison}）．
+表に示す通り，加速度情報の導入によりAccuracyが約5.2ポイント，ROC-AUCが約7ポイント向上した．
+これは，単なる位置関係だけでなく，急停止（ストップ）や急加速（カットイン）といった「動きの質」に関する情報が，シュート成功率の予測において極めて重要であることを示唆している．
+
+\begin{table}[tb]
+ \centering
+ \caption{特徴量の違いによる精度比較}
+ \label{tab:comparison}
+ \begin{tabular}{lccc}
+  \hline
+  Model & Accuracy & F1-Score & ROC-AUC \\
+  \hline
+  Baseline (w/o Acc) & 0.7900 & 0.7621 & 0.8540 \\
+  \textbf{Proposed (w/ Acc)} & \textbf{0.8422} & \textbf{0.8256} & \textbf{0.9231} \\
+  \hline
+ \end{tabular}
+\end{table}
+
+\subsection{モデルの信頼性評価}
+モデルの学習プロセスにおける損失関数の推移を図\ref{fig:loss_curve}に示す．Lossが順調に減少し，過学習することなく安定して収束していることが確認できる．
+
+また，テストデータに対する予測確率の分布を図\ref{fig:dist}に示す．実際にシュートが入ったデータ（Orange）は高い確率帯に，外れたデータ（Blue）は低い確率帯に分布しており，両者のピークが明確に分離している．これはモデルが高い識別能力を持っていることを視覚的に示している．
+
+同時に，Calibration Curve（図\ref{fig:calibration}）においても，予測確率と実際の成功率が対角線（理想線）に沿って推移している．これにより，本モデルが出力する「確率」は，単なるスコアではなく，信頼できる「成功率」として解釈可能であるといえる．
+
+\begin{figure}[tb]
+ \begin{minipage}{0.48\linewidth}
+  \centering
+  \includegraphics[width=\linewidth]{training_loss_curve.png}
+  \caption{学習曲線 (Loss)}
+  \label{fig:loss_curve}
+ \end{minipage}
+ \hfill
+ \begin{minipage}{0.48\linewidth}
+  \centering
+  \includegraphics[width=\linewidth]{final_analysis_graphs/3_shot_quality_dist.png}
+  \caption{予測確率の分布}
+  \label{fig:dist}
+ \end{minipage}
+\end{figure}
+
+\begin{figure}[tb]
+ \centering
+ \includegraphics[width=0.65\linewidth]{final_analysis_graphs/1_calibration_curve.png}
+ \caption{Calibration Curve}
+ \label{fig:calibration}
+\end{figure}
+
+\section{結果と考察}
+\subsection{プロセスと結果の乖離に基づく定性評価}
+本モデルが単なる結果予測ではなく，「Shot Quality（プレーの質）」を評価できているかを検証するため，あえてシュートが外れた（Result: Miss）事例の中で，AIが高い成功確率を予測したシーンを分析した．
+
+図\ref{fig:gravity}は，実際にはシュートが外れたものの，AIが成功確率95.46\%と極めて高く評価したプレーにおけるAttentionの可視化である．
+青いエッジの太さはディフェンスからの注目度（Attention Weight）の強さを表している．
+図左下の数値およびエッジの太さが示す通り，複数のディフェンダー（ID: 9, 7, 3）からのAttentionが，自身のマークマンではなくボールハンドラー（黄色ノード）に集中している．
+これは，ハンドラーの脅威によってディフェンスが収縮（Gravity）し，結果として他の選手にフリーな状況が生まれたことをモデルが正しく認識していることを示している．
+
+この事例から，本モデルは「外れた」という結果に過学習することなく，Gravityによって崩された守備陣形という「質の高いプロセス」を評価できているといえる．
+
+\begin{figure}[tb]
+ \centering
+ \includegraphics[width=0.8\linewidth]{final_graph_analysis_v4/FinalGraph_v4_03-54_0021500001.png}
+ \caption{Gravityの可視化（確率は95.46\%だが結果はMissの事例）}
+ \label{fig:gravity}
+\end{figure}
+
+\subsection{選手パフォーマンス評価}
+モデルが算出した「シュートの打ちやすさ（Expected FG\%）」と「実際の成功率（Actual FG\%）」を比較することで，選手のシュート能力を評価した（図\ref{fig:player_perf}）．
+図中の点線は期待値通りの成績を表すラインである．
+このラインより上側に位置する選手（赤色）は，AIが「難しい（確率は低い）」と判断したシュートでも高い確率で決めていることを意味する．
+例えば，図中のD. DeRozan（トロント・ラプターズ）等は赤色の領域に位置しており，タフな状況下でも得点をねじ込む「Shot Making能力」が高い選手であることが定量的に示されている．
+逆に下側に位置する選手（青色）は，期待値よりも成功率が低く，決定力に課題があることを示唆している．
+
+\begin{figure}[tb]
+ \centering
+ \includegraphics[width=0.8\linewidth]{final_analysis_graphs/2_player_analysis.png}
+ \caption{選手別パフォーマンス評価}
+ \label{fig:player_perf}
+\end{figure}
+
+\section{おわりに}
+本研究では，ST-GATを用いてバスケットボールのShot Quality（プレーの質）を定量化する手法を提案した．
+約7,600プレーを用いた実験の結果，加速度情報を導入することでROC-AUC 0.9231という高い精度を達成した．
+特に，シュートが外れた事例であっても，戦術的に優位な状況を「質の高いプレー」として評価できることを可視化により実証した．
+
+\begin{thebibliography}{99}\footnotesize
+% 1. はじめに
+\bibitem{cervone} D. Cervone, et al.: ``POINTWISE: Predicting Points and Valuing Decisions in Real Time with NBA Optical Tracking Data'', MIT Sloan Sports Analytics Conference (2014).
+\bibitem{harmon} M. Harmon, et al.: ``Predicting Shot Making in Basketball Learnt from Adversarial Multiagent Trajectories'', arXiv preprint arXiv:1609.04849 (2016).
+\bibitem{medium_gnn} A. Argyropoulos, et al.: ``CS224W Leveraging GNNs for NBA shot prediction'', Medium (2025).
+
+% 2. データセット
+\bibitem{linouk23} N. Lin: ``NBA-Player-Movements'', GitHub Repository. \url{https://github.com/linouk23/NBA-Player-Movements}
+\bibitem{kaggle_pbp} Kaggle: ``NBA Play-by-Play Data 2015-2016'', \url{https://www.kaggle.com/}
+
+% 3. モデル手法
+\bibitem{velickovic} P. Veličković, et al.: ``Graph Attention Networks'', ICLR (2018).
+\end{thebibliography}
+
+\end{document}

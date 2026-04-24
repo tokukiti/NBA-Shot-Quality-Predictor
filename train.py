@@ -10,18 +10,19 @@ from tqdm import tqdm
 import sys
 import time
 import os
+# --- 冒頭の import 群にこれを追加 ---
+import matplotlib.pyplot as plt
 
-# model.py が同じディレクトリにあると仮定
-from old.model import STGAT
+from model import STGAT      # ← 正しくはこれ（同じ場所の model.py を使う）s
 
 # --- 設定 ---
-DATA_PATH = 'dataset_v11_pipeline.pt' 
-SAVE_MODEL_PATH = 'stgat_model_v11.pth'
-SAVE_CSV_PATH = 'evaluation_results_v11.csv'
+DATA_PATH = 'dataset_50games.pt'        # さっき決めた名前に合わせる
+SAVE_MODEL_PATH = 'stgat_model_50.pth'  # モデル名変更
+SAVE_CSV_PATH = 'evaluation_results_50.csv'
 
 HIDDEN_DIM = 64
 LR = 0.001
-EPOCHS = 30
+EPOCHS = 50  # エポック数は50のままでOK（データが減っても学習回数は確保したい）
 ACCUMULATION_STEPS = 16 
 
 def set_seed(seed=42):
@@ -39,7 +40,7 @@ def main():
         sys.exit(1)
     
     device = torch.device('cuda')
-    print(f"✅ Using GPU: {torch.cuda.get_device_name(0)}")
+    print(f"Using GPU: {torch.cuda.get_device_name(0)}")
 
     print("Loading dataset...")
     if not os.path.exists(DATA_PATH):
@@ -95,6 +96,9 @@ def main():
     print(f"\nStarting training for {EPOCHS} epochs...")
     start_time = time.time()
 
+    # ★★★ 追加 1: Loss履歴保存用リスト ★★★
+    loss_history = []
+
     for epoch in range(EPOCHS):
         model.train()
         total_loss = 0
@@ -132,8 +136,26 @@ def main():
             total_loss += loss.item() * ACCUMULATION_STEPS
 
         avg_loss = total_loss / len(train_data)
+        
+        # ★★★ 追加 2: リストに記録 ★★★
+        loss_history.append(avg_loss)
+
         elapsed = time.time() - start_time
         print(f"Epoch {epoch+1}: Loss = {avg_loss:.4f} (Total Time: {elapsed:.0f}s)")
+
+    # --- ループを抜けた直後 (Evaluateの前) にグラフ保存 ---
+    
+    # ★★★ 追加 3: Lossグラフの描画と保存 ★★★
+    plt.figure(figsize=(10, 5))
+    plt.plot(range(1, EPOCHS + 1), loss_history, marker='o', label='Training Loss')
+    plt.title('Training Loss Curve')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.grid(True)
+    plt.legend()
+    plt.savefig('training_loss_curve.png') # 画像として保存
+    plt.close()
+    print("学習曲線を 'training_loss_curve.png' に保存しました")
 
     # --- 保存と評価 ---
     print("\nEvaluating & Saving...")
@@ -177,11 +199,11 @@ def main():
     # CSV出力
     df_res = pd.DataFrame(results_list)
     df_res.to_csv(SAVE_CSV_PATH, index=False)
-    print(f"✅ 評価結果を保存しました: {SAVE_CSV_PATH}")
+    print(f"評価結果を保存しました: {SAVE_CSV_PATH}")
 
     # モデル保存
     torch.save(model.state_dict(), SAVE_MODEL_PATH)
-    print(f"✅ モデルを保存しました: {SAVE_MODEL_PATH}")
+    print(f"モデルを保存しました: {SAVE_MODEL_PATH}")
 
     # --- 評価指標の計算 (F1, AUC追加) ---
     acc = accuracy_score(all_labels, all_preds)

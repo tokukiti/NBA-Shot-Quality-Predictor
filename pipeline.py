@@ -104,7 +104,7 @@ def run_pipeline():
     print(f"Filtered rows (Strict Valid Field Goals Only): {len(final_df)}")
     
     final_df.to_csv(OUTPUT_CSV, index=False)
-    print(f"✅ Cleaned data saved to: {OUTPUT_CSV}")
+    print(f" Cleaned data saved to: {OUTPUT_CSV}")
 
 if __name__ == "__main__":
     run_pipeline()

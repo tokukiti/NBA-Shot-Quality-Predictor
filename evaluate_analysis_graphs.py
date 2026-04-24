@@ -5,9 +5,9 @@ from sklearn.calibration import calibration_curve
 import os
 
 # --- 設定 ---
-RESULT_CSV = 'evaluation_results_v11.csv'
+RESULT_CSV = 'evaluation_results_50.csv'
 DATA_CSV = 'cleaned_shots_data_v2.csv'
-OUTPUT_DIR = './analysis_graphs'
+OUTPUT_DIR = './analysis_graphs_50'
 
 def main():
     if not os.path.exists(OUTPUT_DIR):

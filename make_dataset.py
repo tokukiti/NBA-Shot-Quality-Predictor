@@ -9,7 +9,7 @@ from tqdm import tqdm
 # --- 設定 ---
 INPUT_CSV = 'cleaned_shots_data_v2.csv' 
 TRACKING_DIR = './data/2016.NBA.Raw.SportVU.Game.Logs' 
-OUTPUT_PT = 'dataset_v11_pipeline.pt'
+OUTPUT_PT = 'dataset_50games.pt'  # ファイル名も変更
 
 # コート設定
 BASKET_COORDS = np.array([88.75, 25.0])
@@ -181,8 +181,8 @@ def main():
     
     unique_games = df['GAME_ID'].unique()
     
-    # ★★★ 時間短縮のため20試合に限定 ★★★
-    target_games = unique_games[:20] 
+    # ★★★ 時間短縮のため50試合に限定 ★★★
+    target_games = unique_games[:50] 
     
     df = df[df['GAME_ID'].isin(target_games)]
     
@@ -235,9 +235,9 @@ def main():
 
     if final_dataset:
         torch.save(final_dataset, OUTPUT_PT)
-        print(f"\n✅ 完了！ {len(final_dataset)} プレーを保存しました: {OUTPUT_PT}")
+        print(f"\n完了 {len(final_dataset)} プレーを保存しました: {OUTPUT_PT}")
     else:
-        print("\n❌ データが生成されませんでした。")
+        print("\nデータが生成されませんでした。")
 
 if __name__ == "__main__":
     main()

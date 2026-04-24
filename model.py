@@ -23,10 +23,7 @@ class STGAT(torch.nn.Module):
         self.lin2 = Linear(hidden_channels // 2, out_channels)
 
     def forward(self, data_list, return_attention=False):
-        """
-        return_attention=True にすると、(予測結果, (edge_index, att_weights)) を返します
-        学習時(train.py)は False のまま動くので影響ありません。
-        """
+ 
         device = next(self.parameters()).device
         
         # バッチ化 (リストが来たらBatchにする、すでにBatchならそのまま)

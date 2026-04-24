@@ -88,7 +88,7 @@ def main():
         except Exception as e:
             print(f"    Error: {e}")
 
-    print(f"\n✅ 全て完了しました！ '{OUTPUT_DIR}' を確認してください。")
+    print(f"\n 全て完了しました！ '{OUTPUT_DIR}' を確認してください。")
 
 if __name__ == "__main__":
     main()

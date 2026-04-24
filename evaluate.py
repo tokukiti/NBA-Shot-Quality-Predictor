@@ -7,7 +7,7 @@ from sklearn.calibration import calibration_curve
 import os
 
 # --- 設定 ---
-RESULT_CSV = 'evaluation_results_v11.csv'
+RESULT_CSV = 'evaluation_results_50.csv'
 DATA_CSV = 'cleaned_shots_data_v2.csv'
 OUTPUT_DIR = './final_analysis_graphs'
 
@@ -129,7 +129,7 @@ def main():
         plt.savefig(f"{OUTPUT_DIR}/4_zone_accuracy.png")
         plt.close()
 
-    print(f"✅ 全てのグラフを {OUTPUT_DIR} に保存しました。")
+    print(f" 全てのグラフを {OUTPUT_DIR} に保存しました。")
 
 if __name__ == "__main__":
     main()

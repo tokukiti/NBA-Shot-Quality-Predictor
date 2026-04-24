@@ -9,9 +9,9 @@ from model import STGAT
 from torch_geometric.data import Batch
 
 # --- 設定 ---
-MODEL_PATH = 'stgat_model_v11.pth'
-DATA_PATH = 'dataset_v11_pipeline.pt'
-OUTPUT_IMAGE = 'attention_gravity.png'
+MODEL_PATH = 'stgat_model_50.pth'
+DATA_PATH = 'dataset_50games.pt'
+OUTPUT_IMAGE = 'attention_gravity_50.png'
 TARGET_INDEX = 10  # 可視化したいプレーのインデックス（適当な数字に変えて試してください）
 
 def load_model_and_data():
