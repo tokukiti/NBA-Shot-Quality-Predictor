@@ -1,40 +1,18 @@
-# NBA Player Movements
+# Basketball Shot Quality Predictor (ST-GAT)
 
-This is a script for visualization of NBA games from raw SportVU logs.
+## 📌 概要
+バスケットボールのトラッキングデータ（選手の時空間座標データ）から、時空間グラフニューラルネットワーク（ST-GAT）を用いて「シュートの質（成功確率）」を高精度に予測するAIモデルです。
+選手の複雑な動きや連携をグラフ構造としてモデリングし、実際の競技特性に基づいた評価を行っています。
 
-If you admire both Spurs' and Warriors' ball movement, Brad Stevens' playbook, or just miss KD in OKC you'll find this entertaining.
+## 📷 デモ・出力結果
+## 🛠 使用技術
+- **言語:** Python 3.x
+- **フレームワーク:** PyTorch, PyTorch Geometric
+- **データ処理:** pandas, NumPy
+- **可視化:** Matplotlib, seaborn
 
-## Examples
-
-![Spurs](https://github.com/linouk23/NBA-Player-Movements/blob/master/examples/spurs.gif)
-![Warriors](https://github.com/linouk23/NBA-Player-Movements/blob/master/examples/warriors.gif)
-![Celtics](https://github.com/linouk23/NBA-Player-Movements/blob/master/examples/celtics.gif)
-![Durant](https://github.com/linouk23/NBA-Player-Movements/blob/master/examples/durant.gif)
-
-## Usage
-
-1. Clone this repo:
-
-  ```bash
-  $ git clone https://github.com/linouk23/NBA-Player-Movements
-  ```
-
-2. Choose any NBA game from ```data/2016.NBA.Raw.SportVU.Game.Logs``` directory.
-
-3. Generate an animation for the play by running the following script:
-
-  ```bash
-  $ python3 main.py --path=Celtics@Lakers.json --event=140
-  ```
-
-  ```
-  required arguments:
-    --path PATH    a path to json file to read the events from
-
-  optional arguments:
-    --event EVENT  an index of the event to create the animation to
-                   (the indexing start with zero, if you index goes beyond out
-                   the total number of events (plays), it will show you the last
-                   one of the game)
-    -h, --help     show the help message and exit
-  ```
+## 🔥 工夫した点・こだわった点
+1. **ドメイン知識を活かした独自の特徴量設計**
+   単に生の座標データをモデルに入力するのではなく、バスケの競技特性を分析し、「ボール保持者とディフェンダーの距離・角度」や「オフザボールの選手の軌道」などの独自の特徴量を前処理段階で実装しました。
+2. **泥臭い仮説検証による精度向上**
+   当初、既存のST-GATモデルの適用だけでは精度が頭打ちになりました。そこでROC-AUC曲線等を用いた定量評価に加え、実際の試合映像とアテンションの重みを照らし合わせる定性評価を徹底し、アーキテクチャのチューニングを行うPDCAを回しました。
